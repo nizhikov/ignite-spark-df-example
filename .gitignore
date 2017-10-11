@@ -1,0 +1,7 @@
+*.class
+*.log
+.idea
+*.iml
+out
+gen
+Будет удалено pom.xml
