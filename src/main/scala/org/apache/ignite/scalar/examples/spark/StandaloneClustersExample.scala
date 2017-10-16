@@ -16,8 +16,8 @@
  */
 package org.apache.ignite.scalar.examples.spark
 
+import org.apache.ignite.spark.IgniteRelationProvider._
 import org.apache.spark.sql.SparkSession
-
 import org.apache.spark.sql.functions._
 
 /**
@@ -56,38 +56,43 @@ object StandaloneClustersExample extends App {
     spark.sparkContext.addJar(MAVEN_HOME + "/javax/cache/cache-api/1.0.0/cache-api-1.0.0.jar")
     spark.sparkContext.addJar(MAVEN_HOME + "/com/h2database/h2/1.4.195/h2-1.4.195.jar")
 
-    searchRussianPlayers(spark)
+    //searchRussianPlayers(spark)
 
-    println("Search russian players...DONE")
+    //println("Search russian players...[DONE]")
 
-    searchTopPlayedMatches(spark)
+    //searchTopPlayedMatchesInKeyValue(spark)
 
-    println("Search players that played max matches...DONE")
+    searchTopPlayedMatchesInKeyValue(spark)
+
+    println("Search players that played max matches...[DONE]")
 
     spark.close()
 
     def searchRussianPlayers(spark: SparkSession) = {
         val russianPlayers = spark.read
-            .format("ignite")
-            .option("config", CONFIG)
-            .option("table", "player")
+            .format(IGNITE)
+            .option(TCP_IP_ADDRESSES, "172.17.0.1:47500..47509;127.17.0.2:47500..47509;127.17.0.3:47500..47509;127.17.0.4:47500..47509; 127.17.0.5:47500..47509;")
+            .option(PEER_CLASS_LOADING, "true")
+            .option(TABLE, "player")
             .load().filter(col("country") === "RUS")
 
         russianPlayers.printSchema()
-        russianPlayers.show()
+        russianPlayers.show(10000)
     }
 
     def searchTopPlayedMatches(spark: SparkSession) = {
         spark.read
-            .format("ignite")
-            .option("config", CONFIG)
-            .option("table", "player")
+            .format(IGNITE)
+            .option(TCP_IP_ADDRESSES, "172.17.0.1:47500..47509;127.17.0.2:47500..47509;127.17.0.3:47500..47509;127.17.0.4:47500..47509; 127.17.0.5:47500..47509;")
+            .option(PEER_CLASS_LOADING, "true")
+            .option(TABLE, "player")
             .load().createOrReplaceTempView("player")
 
         spark.read
-            .format("ignite")
-            .option("config", CONFIG)
-            .option("table", "match")
+            .format(IGNITE)
+            .option(TCP_IP_ADDRESSES, "172.17.0.1:47500..47509;127.17.0.2:47500..47509;127.17.0.3:47500..47509;127.17.0.4:47500..47509; 127.17.0.5:47500..47509;")
+            .option(PEER_CLASS_LOADING, "true")
+            .option(TABLE, "match")
             .load().createOrReplaceTempView("match")
 
         val countMatches = spark.sql(
@@ -97,7 +102,8 @@ object StandaloneClustersExample extends App {
               |    count(*) cnt
               |  FROM
               |      player p join
-              |      match m on (p.PLAYER_ID = m.WINNER_ID) or (p.PLAYER_ID = m.LOSER_ID)
+              |      match m on (p.id = m.winner_id) or (p.id = m.LOSER_ID)
+              |  WHERE p.country = "RUS"
               |  GROUP BY p.NAME
               |  ORDER BY cnt DESC
               |  LIMIT 10
@@ -106,5 +112,47 @@ object StandaloneClustersExample extends App {
         countMatches.printSchema()
         countMatches.show()
     }
+
+    def searchTopPlayedMatchesInKeyValue(spark: SparkSession) = {
+        println(classOf[Player].getName)
+        println(classOf[Match].getName)
+        spark.read
+            .format(IGNITE)
+            .option(TCP_IP_ADDRESSES, "172.17.0.1:47500..47509;127.17.0.2:47500..47509;127.17.0.3:47500..47509;127.17.0.4:47500..47509; 127.17.0.5:47500..47509;")
+            .option(PEER_CLASS_LOADING, "true")
+            .option(CACHE, "player_kv")
+            .option(KEY_CLASS, "java.lang.Long")
+            .option(VALUE_CLASS, classOf[Player].getName)
+            .option(KEEP_BINARY, "true")
+            .load().createOrReplaceTempView("player_kv")
+
+        spark.read
+            .format(IGNITE)
+            .option(TCP_IP_ADDRESSES, "172.17.0.1:47500..47509;127.17.0.2:47500..47509;127.17.0.3:47500..47509;127.17.0.4:47500..47509; 127.17.0.5:47500..47509;")
+            .option(PEER_CLASS_LOADING, "true")
+            .option(CACHE, "match_kv")
+            .option(KEY_CLASS, "java.lang.Long")
+            .option(VALUE_CLASS, classOf[Match].getName)
+            .option(KEEP_BINARY, "true")
+            .load().createOrReplaceTempView("match_kv")
+
+        val countMatches = spark.sql(
+            """
+              |  SELECT
+              |    p.`value.name`,
+              |    count(*) cnt
+              |  FROM
+              |      player_kv p join
+              |      match_kv m on (p.key = m.`value.winner_id`) or (p.key = m.`value.loser_id`)
+              |  WHERE p.`value.country` = "RUS"
+              |  GROUP BY p.`value.name`
+              |  ORDER BY cnt DESC
+              |  LIMIT 10
+            """.stripMargin)
+
+        countMatches.printSchema()
+        countMatches.show()
+    }
 }
+
 

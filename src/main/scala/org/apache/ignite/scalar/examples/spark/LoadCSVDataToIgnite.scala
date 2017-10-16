@@ -49,9 +49,9 @@ object LoadCSVDataToIgnite extends App {
 
         val playerCache = createPlayerCache(client)
 
-        implicit val insertPlayerQuery = new SqlFieldsQuery("INSERT INTO player(id, name, country) VALUES(?, ?, ?)")
+        val insertPlayerQuery = new SqlFieldsQuery("INSERT INTO player(id, name, country) VALUES(?, ?, ?)")
 
-        implicit val insertMatchQuery = new SqlFieldsQuery(
+        val insertMatchQuery = new SqlFieldsQuery(
             s"""
                | INSERT INTO match(id, tourney_id, tourney_name, surface, draw_size, tourney_level, tourney_date,
                | match_num, winner_id, winner_seed, winner_entry, winner_name, winner_hand, winner_ht, winner_ioc,
@@ -263,6 +263,7 @@ object LoadCSVDataToIgnite extends App {
         print("Starting Ignite client...")
         val cfg = new IgniteConfiguration
         cfg.setClientMode(true)
+        cfg.setPeerClassLoadingEnabled(true)
 
         val ignite = Ignition.start(cfg)
 
